@@ -1,0 +1,634 @@
+---
+title: "Proyecto Final: Series de Tiempos"
+author: "Ana María Aguilera"
+date: 2020-04-12
+output:
+  html_notebook:
+    toc: yes
+    toc_float: yes
+    theme: united
+    highlight: tango
+  github_document:
+    toc: yes
+    dev: jpeg
+always_allow_html: true
+---
+
+```{r, message=FALSE}
+library("easypackages")
+library(tsibble)
+library(tidyverse)
+library(tidyquant)
+library(plotly)
+library(DT)
+library(zoo)
+library(lubridate)
+library(fpp2)
+library(fpp3)
+library(scales)
+library(patchwork)
+library(feasts)
+library(fable)
+require(reshape)
+
+packages("tidyverse", "tidyquant", "lubridate", "patchwork", "fpp2","fpp3","scales", "timetk")
+```
+
+
+# Primer Serie de Tiempo
+```{r}
+C <- read.csv('./RSCCASN.csv')
+C
+
+```
+ 
+## Teoría
+**Ventas minoristas anticipadas: Tiendas de ropa y accesorios de ropa**
+
+Las ventas minoristas
+Caracterizado por ser un negocio pequeño de origen familiar, se basa en la venta en menudeo o detallista es la empresa comercial o persona en régimen de autónomo que vende productos al consumidor final. 
+
+Saint Louis es una ciudad independiente del estado de Misuri, Estados Unidos. Está ubicada sobre la orilla derecha del río Misisipi.
+
+
+**Dataset**
+
+Unidades: Millones de dólares, sin ajuste estacional
+
+Frecuencia: mensual
+
+Con base a una Encuesta de ventas minoristas mensual anticipada (Censo)
+
+Cita:
+Oficina del Censo de EE. UU., Ventas minoristas anticipadas: Tiendas de ropa y accesorios de ropa [RSCCASN], obtenido de FRED, Banco de la Reserva Federal de St. Louis; https://fred.stlouisfed.org/series/RSCCASN, 26 de noviembre de 2020.
+
+
+
+## Limpieza de datos Ropa
+```{r}
+C$DATE <- as.Date(C$DATE,format="%Y-%m-%d")
+
+C$RSCCASN <- as.double(C$RSCCASN) 
+```
+
+```{r}
+C = rename(C, c(RSCCASN="Clothes", DATE='Date'))
+C
+```
+
+## Gráfica
+```{r}
+p1 <- ggplot(data = C) + 
+  geom_line(aes(x = Date, y = Clothes)) +
+  ylab("Millones de dólares") + 
+  xlab("Fecha") + ggtitle("Ventas de ropa minoristas EE.UU. ")
+p1
+```
+Aquí de puede identificar un OUTLIER empezando el año 2020 causado por la contingencia del COVID-19.
+
+
+# Segunda Serie de Tiempo
+```{r}
+Food <- read.csv('./RSAFSNA.csv')
+Food
+```
+
+## Teoría
+**Ventas minoristas anticipadas: Servicios minoristas y de alimentos**
+
+Las ventas minoristas
+Caracterizado por ser un negocio pequeño de origen familiar, se basa en la venta en menudeo o detallista es la empresa comercial o persona en régimen de autónomo que vende productos al consumidor final. 
+
+Saint Louis es una ciudad independiente del estado de Misuri, Estados Unidos. Está ubicada sobre la orilla derecha del río Misisipi.
+
+Los trabajadores del comercio de alimentos han surgido como una nueva categoría de servicios de primera línea durante esta pandemia. 
+
+**Dataset**
+
+Fuente: Publicación de la Oficina del Censo de EE. UU .: Ventas mensuales anticipadas para servicios minoristas y de alimentos
+
+Unidades: Millones de dólares, sin ajuste estacional
+
+Frecuencia: mensual
+
+
+Con base a una Encuesta de ventas minoristas mensual anticipada (Censo)
+
+Cita:
+U.S. Census Bureau, Advance Retail Sales: Retail and Food Services, Total [RSAFSNA], obtenido de FRED, Federal Reserve Bank of St. Louis; https://fred.stlouisfed.org/series/RSAFSNA, 26 de noviembre de 2020.
+
+
+## Limpieza de datos Comida
+```{r}
+Food$DATE <- as.Date(Food$DATE,format="%Y-%m-%d")
+
+Food$RSAFSNA <- as.double(Food$RSAFSNA) 
+```
+
+```{r}
+Food = rename(Food, c(RSAFSNA="Food", DATE='Date'))
+Food
+```
+
+
+## Gráfica
+```{r}
+p2 <- ggplot(data = Food) + 
+  geom_line(aes(x = Date, y = Food)) +
+  ylab("Millones de dólares") + 
+  xlab("Fecha") +
+  ggtitle("Ventas de comida minoristas EE.UU. ")
+p2
+```
+## Graficar ambas
+```{r}
+data <- merge (C, Food, by = "Date")
+data
+```
+
+
+```{r}
+p3 <- ggplot(data = data) + 
+  geom_line(aes(x = Date, y = Food)) +
+  geom_line(aes(x = Date, y = Clothes)) +            
+  ylab("Millones de dólares") + 
+  xlab("Fecha")
+p3
+```
+
+
+```{r}
+data1 <- data %>%
+  select(Date,Clothes,Food)%>%
+  mutate(date = yearmonth(Date))%>%
+  as_tsibble(index = date)
+
+data1
+```
+
+
+
+```{r}
+plotly::ggplotly(p3) 
+```
+
+
+# Descomposición STL
+
+Aplicamos la descomposición llamada ST (Seasonal & Trend Decomposition)
+
+Aquí se lleva a cabo la descomposición de la serie, como se puede ver en la tabla. La tendencia (trend) muestra el movimiento de la serie, sin considerar las fluctuaciones estacionales ni el residuo. Podemos analizar la tendencia de la serie gráficamente:
+
+## Serie de Ropa
+```{r}
+
+dcmp1 <- data1 %>%
+  model(STL(Clothes))
+
+components(dcmp1)
+
+
+p1 <- data1 %>%
+  autoplot(Clothes, color='gray') +
+  autolayer(components(dcmp1), trend, color='red') +
+  xlab("Fecha") + ylab("Millones de dólares") +
+  ggtitle("Ventas de Ropa minoristas EE.UU. ")
+
+dcmp2 <- data1 %>%
+  model(STL(Food))
+
+components(dcmp2)
+
+p2 <- data1 %>%
+  autoplot(Food, color='gray') +
+  autolayer(components(dcmp2), trend, color='red') +
+  xlab("Fecha") + ylab("Millones de dólares") +
+  ggtitle("Ventas de comida minoristas EE.UU. ")
+
+p1/p2
+```
+
+Graficamos los tres componentes simultáneamente. (Serie "Ropa")
+
+```{r}
+components(dcmp1) %>% autoplot() + xlab("Year")
+```
+
+Graficamos todos los componentes de la serie "Comida"
+
+```{r}
+components(dcmp2) %>% autoplot() + xlab("Year")
+```
+Podemos hacer entonces un pronóstico de nuestra serie de tiempo usando decomposition_model().
+
+```{r}
+data1 %>%
+  model(stlf = decomposition_model(
+             STL(Clothes ~ trend(window = 7), robust = TRUE),
+             NAIVE(season_adjust)
+  )) %>%
+  forecast() %>%
+  autoplot(data1)+ ylab("Millones de dólares") +
+  ggtitle("Ropa ")
+```
+
+
+## Serie de Comida.
+
+```{r}
+data1 %>%
+  model(stlf = decomposition_model(
+             STL(Food ~ trend(window = 7), robust = TRUE),
+             NAIVE(season_adjust)
+  )) %>%
+  forecast() %>%
+  autoplot(data1)+ ylab("Millones de dólares") +
+  ggtitle("Comida")
+```
+
+# Pronósticos con los modelos básicos
+
+## Ropa
+```{r}
+train <- data1 %>% filter_index("2010-01-01" ~ "2016-01-01")
+
+fit <- train %>%
+  model(
+    Mean = MEAN(Clothes),
+    `Naïve` = NAIVE(Clothes),
+    `Seasonal naïve` = SNAIVE(Clothes),
+    Drift = RW(Clothes ~ drift())
+  )
+
+fc <- fit %>%
+  forecast(h = 80)
+
+short <- data1 %>% filter_index("01-01-2010" ~ .)
+
+
+fc %>%
+  autoplot(short, level = NULL) +
+  xlab("Año") + ylab("Millones de dólares") +
+  ggtitle("Pronóstico para la venta minorista de ropa") +
+  guides(colour=guide_legend(title="Forecast"))
+```
+
+
+```{r}
+fr <- data1 %>%
+  filter_index('2000 Jan'~'2019 Jan')
+
+adjusted <- fr %>%
+  model(`Media`=MEAN(Clothes),
+        `Naive`=NAIVE(Clothes),
+        `Drift`=NAIVE(Clothes~drift()),
+        `Seasonal naïve` = SNAIVE(Clothes))
+
+fc <- adjusted %>%
+  forecast(h=30)
+
+fc %>%
+  autoplot(short)+ ylab("Millones de dólares") +
+  ggtitle("Ventas de ropa minorista")
+
+```
+
+
+```{r}
+accuracy(fit)
+```
+Se puede ver que el modelo de predicción que mejor se ajusta a esta serie en particular es el Seasonal Naive, pues es una serie altamente estacional.
+
+## Diagnóstico de residuales
+
+```{r}
+aug <- augment(fit)
+aug
+```
+
+
+
+```{r warning = F}
+train %>% 
+  model(SNAIVE(Clothes)) %>% 
+  gg_tsresiduals() + 
+  ggtitle("Diagnóstico de residuales para el modelo Seasonal Naïve")
+```
+## Diagnóstico de residuales
+
+* En la primera gráfica de los residuos no se percibe ningún patrón fuertemente marcado ni tendencia, sino que los residuos parecen aleatorios y la media de los datos se acerca a cero.
+
+* La gráfica de ACF muestra pocos rezagos significativos.
+
+* El histograma muestra una distribución normal.
+
+
+## Tests de Portmanteau de autocorrelación
+
+```{r}
+aug %>% features(.resid, box_pierce, lag=2, dof=0)
+```
+
+```{r}
+aug %>% features(.resid, ljung_box, lag=2, dof=0)
+```
+
+Se puede observar que en todos los modelos, de Box-Pierce y de Ljung-Box, se descarta la hipótesis nula (de que no es ruido blanco) ya que los p-value son muy pequeños e indica que existe una autocorrelación.
+
+
+## Comida
+```{r}
+train <- data1 %>% filter_index("2010-01-01" ~ "2018-01-01")
+
+fit <- train %>%
+  model(
+    Mean = MEAN(Food),
+    `Naïve` = NAIVE(Food),
+    `Seasonal naïve` = SNAIVE(Food),
+    Drift = RW(Food ~ drift())
+  )
+
+fc <- fit %>%
+  forecast(h = 80)
+
+fc %>%
+  autoplot(short, level = NULL) +
+  xlab("Año") + ylab("Millones de dólares") +
+  ggtitle("Pronóstico para la venta minorista de comida") +
+  guides(colour=guide_legend(title="Forecast"))
+```
+
+
+```{r}
+fr <- data1 %>%
+  filter_index('2000 Jan'~'2019 Jan')
+
+adjusted <- fr %>%
+  model(`Media`=MEAN(Food),
+        `Naive`=NAIVE(Food),
+        `Drift`=NAIVE(Food~drift()),
+        `Seasonal naïve` = SNAIVE(Food))
+
+fc <- adjusted %>%
+  forecast(h=30)
+
+fc %>%
+  autoplot(short)+ylab("Millones de dólares") +
+  ggtitle("Ventas de comida minoristas ")
+
+```
+
+
+```{r}
+accuracy(fit)
+```
+También en este caso el modelo que mas se ajusta a la serie es el Seasonal Naive
+
+
+## Diagnóstico de residuales
+
+```{r}
+aug2 <- augment(fit)
+aug2
+```
+
+
+```{r warning = F}
+train %>% 
+  model(SNAIVE(Food)) %>% 
+  gg_tsresiduals() + 
+  ggtitle("Diagnóstico de residuales para el modelo Seasonal Naïve")
+```
+
+## Diagnóstico de residuales
+
+* En la primera gráfica de los residuos no se percibe ningún patrón fuertemente marcado ni tendencia, sino que los residuos parecen aleatorios y la media de los datos se acerca a cero.
+
+* La gráfica de ACF muestra pocos rezagos significativos.
+
+* El histograma muestra una distribución que se acerca a una normal.
+
+
+## Tests de Portmanteau de autocorrelación
+
+```{r}
+aug2 %>% features(.resid, box_pierce, lag=2, dof=0)
+```
+
+```{r}
+aug2 %>% features(.resid, ljung_box, lag=2, dof=0)
+```
+
+Se puede observar que en todos los modelos, de Box-Pierce y de Ljung-Box, se descarta la hipótesis nula (de que no es ruido blanco) ya que los p-value son muy pequeños e indica que existe una autocorrelación.
+
+
+# Suavización Exponencial
+
+## Ropa
+```{r}
+# Entrenamiento de los modelos
+fit3 <- train %>%
+  model(
+    `Seasonal naïve` = SNAIVE(Clothes),
+    `Damped Holt Winters` = ETS(Clothes ~ error("M") + trend("Ad") + 
+                           season("M")),
+    `ETS sin tendencia y aditivo` = ETS(Clothes ~ error("A") + trend("N") + season("A"))
+  )
+
+# Pronóstico
+fc <- fit3 %>%
+  forecast(h = 80)
+
+a <- fc %>%
+  autoplot(short, level = NULL) +
+  xlab("Year") + ylab("Millones de dólares") +
+  ggtitle("Suavización exponencial vs Métodos de Referencia Ropa") +
+  guides(colour=guide_legend(title="Forecast"))
+
+b <-  a + tidyquant::coord_x_date(xlim = c("2017-01-01","2022-01-01")) + ggtitle("") + 
+  theme(legend.position = "none")
+
+(a) / (b)
+
+```
+
+## Errores de pronóstico Ropa
+```{r}
+accuracy(fc, data1)
+
+```
+
+El mejor modelo es el de Seasonal Naïve, pues tiene los valores menores de error de predicción en todas las métricas.
+
+## Comida
+```{r}
+# Entrenamiento de los modelos
+fit3 <- train %>%
+  model(
+    `Seasonal naïve` = SNAIVE(Food),
+    `Damped Holt Winters` = ETS(Food ~ error("M") + trend("Ad") + 
+                           season("M")),
+    `ETS sin tendencia y aditivo` = ETS(Food ~ error("A") + trend("N") + season("A"))
+  )
+
+# Pronóstico
+fc <- fit3 %>%
+  forecast(h = 80)
+
+a <- fc %>%
+  autoplot(short, level = NULL) +
+  xlab("Year") + ylab("Millones de dólares") +
+  ggtitle("Suavización exponencial vs Métodos de Referencia Food") +
+  guides(colour=guide_legend(title="Forecast"))
+
+b <-  a + tidyquant::coord_x_date(xlim = c("2017-01-01","2022-01-01")) + ggtitle("") + 
+  theme(legend.position = "none")
+
+(a) / (b)
+
+```
+
+## Errores de pronóstico Comida
+```{r}
+accuracy(fc, data1)
+
+```
+Aquí el mejor modelo es el Holt-Winters Amortiguado, por tener los errores de pronóstico menores.
+
+
+```{r}
+food_tsibble <- data1 %>%
+  select(date,Food)%>%
+  as_tsibble(index = date)
+
+food_tsibble
+```
+
+# Modelo Arima
+
+## Ropa
+```{r}
+fit <- fr %>%
+  model(ARIMA(Clothes ~ PDQ(1,1,0),
+              stepwise = FALSE, approximation = FALSE))
+report(fit)
+```
+
+```{r}
+fit <- fr %>%
+  model(ARIMA(Clothes ~ pdq(2,1,0) + PDQ(1,1,0)),
+        `Damped` = ETS(Clothes~error("A") + trend("Ad", phi = 0.9))
+        )
+rev <- fit %>%
+  augment()
+
+rev
+```
+
+
+```{r}
+accuracy(fit)
+```
+
+## Gráfica SARIMA
+```{r}
+fit_arima_prueba <- fr %>%
+  model(ARIMA(Clothes ~ pdq(2,1,0) + PDQ(1,1,0)))
+
+fc_arima_prueba <- fit_arima_prueba %>%
+  forecast(h=25)
+        
+fc_arima_prueba %>% 
+  autoplot(short) +
+  ggtitle("Pronóstico Venta de ropa minorista 2019 y 2020") +
+  xlab("Año") + ylab ("Millones de dólares")
+
+```
+
+## Gráfica Damped
+```{r}
+fit <- fr %>%
+model(`Damped` = ETS(Clothes~error("A") + trend("Ad", phi = 0.9)))
+
+fc <- fit %>%
+  forecast(h=30)
+fc %>%
+  autoplot(short)+
+  ggtitle("Pronóstico Venta de ropa minorista") +
+  xlab("Año") + ylab ("Millones de dólares")
+
+```
+
+## Comida
+```{r}
+fit <- fr %>%
+  model(ARIMA(Food ~ PDQ(1,1,0),
+              stepwise = FALSE, approximation = FALSE))
+report(fit)
+
+```
+
+
+```{r}
+fit <- fr %>%
+  model(ARIMA(Food ~ pdq(2,1,0) + PDQ(1,1,0)),
+        `Damped` = ETS(Food~error("A") + trend("Ad", phi = 0.9))
+        )
+rev <- fit %>%
+  augment()
+rev
+```
+
+
+```{r}
+accuracy(fit)
+
+```
+
+## Gráfica SARIMA
+```{r}
+fit_arima_prueba <- fr %>%
+  model(ARIMA(Food ~ pdq(2,1,0) + PDQ(1,1,0)))
+
+fc_arima_prueba <- fit_arima_prueba %>%
+  forecast(h=25)
+        
+fc_arima_prueba %>% 
+  autoplot(short) +
+  ggtitle("Pronóstico Venta de comida minorista 2019 y 2020") +
+  xlab("Año") + ylab ("Millones de dólares")
+
+```
+
+## Gráfica Damped
+```{r}
+fit <- fr %>%
+model(`Damped` = ETS(Food~error("A") + trend("Ad", phi = 0.9)))
+
+fc <- fit %>%
+  forecast(h=30)
+fc %>%
+  autoplot(short)+
+  ggtitle("Pronóstico Venta de comida minorista") +
+  xlab("Año") + ylab ("Millones de dólares")
+
+```
+
+Se puede observar que el metodo Sarima se ajusta mejor a ambas series de tiempo.
+
+
+# Conclusión
+
+* De entre todos los modelos basicos de pronósticos para la serie de tiempo de las Ventas minoristas de tiendas de ropa y accesorios de ropa, el que mejor se ajustaba inicialmente es el Seasonal Naïve.
+
+* Para el metodo de suavizacion expponencial, el que mejor se ajustaba a los datos fue el modelo de Holt-Winters Amortiguado.
+
+* El método Damped y Arima terminan por ser mejores modelos para pronosticar, pero el método Arima Estacional es el mejor; tiene un mejor ajuste según los datos en ambas series de tiempo.
+
+* Por último podemos concluir que: 
+  - Para la serie de tiempo de la comida minorista:
+  Modelo Holt Winters Amortiguado es muy bueno, pero el mejor es Arima estacional (Sarima) porque tiene     los errores de pronóstico más pequeños.
+
+  - Para la serie de tiempo de la venta de ropa:
+  Damped fue muy buena, pero la mejor es Arima estacional (Sarima) porque tiene los errores de pronóstico más pequeños.
+  
